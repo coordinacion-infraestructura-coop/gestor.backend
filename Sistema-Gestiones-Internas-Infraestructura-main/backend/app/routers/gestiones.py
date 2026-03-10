@@ -273,6 +273,37 @@ def cambiar_estado(
             except ValueError:
                 pass
 
+    # Departamento / Localidad:
+    # - Si no se editan (None), se conserva el valor actual
+    # - No permitimos vaciarlos
+    nuevo_departamento = payload.departamento
+    if nuevo_departamento is None:
+        nuevo_departamento = g.get("departamento")
+    else:
+        nuevo_departamento = str(nuevo_departamento).strip()
+        if nuevo_departamento == "":
+            raise HTTPException(status_code=400, detail="Departamento no puede quedar vacío")
+
+    nueva_localidad = payload.localidad
+    if nueva_localidad is None:
+        nueva_localidad = g.get("localidad")
+    else:
+        nueva_localidad = str(nueva_localidad).strip()
+        if nueva_localidad == "":
+            raise HTTPException(status_code=400, detail="Localidad no puede quedar vacía")
+
+    # Validar que la combinación exista en geo_localidades
+    cfg_geo = qparams([
+        ("departamento", "STRING", nuevo_departamento),
+        ("localidad", "STRING", nueva_localidad),
+    ])
+    geo = _one(_fmt_tables(Q.GET_GEO), cfg_geo)
+    if not geo:
+        raise HTTPException(
+            status_code=400,
+            detail="Departamento/Localidad inválidos (no existen en geo_localidades)"
+        )
+
     cfg_upd = qparams([
         ("id_gestion", "STRING", id_gestion),
         ("old_fecha_ingreso", "DATE", old_fecha_ingreso),
@@ -281,6 +312,8 @@ def cambiar_estado(
         ("derivado_a_id", "STRING", payload.derivado_a),
         ("nro_expediente", "STRING", nuevo_nro_expediente),
         ("fecha_ingreso", "DATE", nueva_fecha_ingreso),
+        ("departamento", "STRING", nuevo_departamento),
+        ("localidad", "STRING", nueva_localidad),
         ("updated_at", "TIMESTAMP", now_dt),
         ("updated_by", "STRING", actor),
     ])
@@ -295,8 +328,12 @@ def cambiar_estado(
         "acciones_implementadas": payload.acciones_implementadas,
         "nro_expediente": nuevo_nro_expediente,
         "fecha_ingreso": str(nueva_fecha_ingreso) if nueva_fecha_ingreso else None,
+        "departamento": nuevo_departamento,
+        "localidad": nueva_localidad,
+        "geo_id": geo.get("id_geo") if geo else None,
     }
 
+    # Evento principal de cambio de estado
     cfg_ev = qparams([
         ("id_evento", "STRING", str(uuid4())),
         ("id_gestion", "STRING", id_gestion),
@@ -313,6 +350,50 @@ def cambiar_estado(
         ("metadata_json", "STRING", json_dumps_safe(meta)),
     ])
     _run(_fmt_tables(Q.INSERT_EVENTO), cfg_ev)
+
+    # Auditoría explícita de cambios de datos relevantes
+    cambios = []
+
+    old_nro_expediente = g.get("nro_expediente")
+    if (old_nro_expediente or None) != (nuevo_nro_expediente or None):
+        cambios.append(("nro_expediente", old_nro_expediente, nuevo_nro_expediente))
+
+    old_fecha_ingreso_str = str(old_fecha_ingreso) if old_fecha_ingreso else None
+    nueva_fecha_ingreso_str = str(nueva_fecha_ingreso) if nueva_fecha_ingreso else None
+    if old_fecha_ingreso_str != nueva_fecha_ingreso_str:
+        cambios.append(("fecha_ingreso", old_fecha_ingreso_str, nueva_fecha_ingreso_str))
+
+    old_departamento = g.get("departamento")
+    if (old_departamento or None) != (nuevo_departamento or None):
+        cambios.append(("departamento", old_departamento, nuevo_departamento))
+
+    old_localidad = g.get("localidad")
+    if (old_localidad or None) != (nueva_localidad or None):
+        cambios.append(("localidad", old_localidad, nueva_localidad))
+
+    for campo, anterior, nuevo in cambios:
+        meta_cambio = {
+            "campo": campo,
+            "valor_anterior": anterior,
+            "valor_nuevo": nuevo,
+            "estado_contexto": payload.nuevo_estado,
+        }
+        cfg_ev_cambio = qparams([
+            ("id_evento", "STRING", str(uuid4())),
+            ("id_gestion", "STRING", id_gestion),
+            ("fecha_evento", "TIMESTAMP", now_dt),
+            ("usuario", "STRING", actor),
+            ("rol_usuario", "STRING", rol),
+            ("tipo_evento", "STRING", "ACTUALIZA_DATO"),
+            ("estado_anterior", "STRING", estado_anterior),
+            ("estado_nuevo", "STRING", payload.nuevo_estado),
+            ("campo_modificado", "STRING", campo),
+            ("valor_anterior", "STRING", None if anterior is None else str(anterior)),
+            ("valor_nuevo", "STRING", None if nuevo is None else str(nuevo)),
+            ("comentario", "STRING", payload.comentario),
+            ("metadata_json", "STRING", json_dumps_safe(meta_cambio)),
+        ])
+        _run(_fmt_tables(Q.INSERT_EVENTO), cfg_ev_cambio)
 
     return {"ok": True, "id_gestion": id_gestion, "estado": payload.nuevo_estado}
 

@@ -61,6 +61,8 @@ class CambioEstado(BaseModel):
     # ✅ NUEVOS CAMPOS EDITABLES
     nro_expediente: Optional[str] = None
     fecha_ingreso: Optional[date] = None
+    departamento: Optional[str] = None
+    localidad: Optional[str] = None
 
     # Campos extra que tu UI venía mandando
     derivado_a: Optional[str] = None

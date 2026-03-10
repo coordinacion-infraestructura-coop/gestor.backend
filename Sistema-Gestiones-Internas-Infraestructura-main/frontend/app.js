@@ -57,22 +57,36 @@ function escapeHtml(s) {
     .replaceAll("'", "&#039;");
 }
 
-function toast({ title = "Info", message = "", variant = "ok", ms = 3200 } = {}) {
+function toast({ title = "Info", message = "", variant = "ok", ms = 4000 } = {}) {
   const host = $id("toastHost");
   if (!host) return;
   const el = document.createElement("div");
+  const icon = variant === "error" ? "✕" : "✓";
   el.className = `toast toast--${variant === "error" ? "error" : "ok"}`;
   el.innerHTML = `
-    <div class="toast-title">${escapeHtml(title)}</div>
-    ${message ? `<div class="toast-msg">${escapeHtml(message)}</div>` : ``}
+    <div style="display:flex; gap:12px; align-items:center;">
+      <div style="width:32px; height:32px; border-radius:50%; background:var(--bg); display:grid; place-items:center; font-weight:bold; font-size:16px;">${icon}</div>
+      <div>
+        <div class="toast-title">${escapeHtml(title)}</div>
+        ${message ? `<div class="toast-msg">${escapeHtml(message)}</div>` : ``}
+      </div>
+    </div>
   `;
   host.appendChild(el);
   window.setTimeout(() => {
     el.style.opacity = "0";
-    el.style.transform = "translateY(6px)";
-    el.style.transition = "opacity .18s ease, transform .18s ease";
-    window.setTimeout(() => el.remove(), 220);
-  }, Math.max(800, ms));
+    el.style.transform = "translateX(20px)";
+    el.style.transition = "var(--transition)";
+    window.setTimeout(() => el.remove(), 250);
+  }, Math.max(1000, ms));
+}
+
+function getStatusChipClass(status) {
+  const s = String(status || "").toUpperCase();
+  if (["FINALIZADO", "COMPLETADO", "CUMPLIDO", "OK", "ARCHIVO"].some(x => s.includes(x))) return "chip--success";
+  if (["PENDIENTE", "CURSO", "PROCESO", "ESPERA", "REVISION"].some(x => s.includes(x))) return "chip--warning";
+  if (["CANCELADO", "RECHAZADO", "ERROR", "REBOTADO", "N/A"].some(x => s.includes(x))) return "chip--danger";
+  return "chip--info";
 }
 
 function setGlobalLoading(isLoading, text = "Cargando...") {
@@ -1225,6 +1239,10 @@ function renderGrid(rows) {
         const v = pick(r, "costo_estimado");
         const m = pick(r, "costo_moneda");
         td.textContent = (v === null || v === undefined || v === "") ? "" : `${v}${m ? " " + m : ""}`;
+      } else if (c.key === "estado") {
+        const val = pick(r, "estado") ?? "";
+        const cls = getStatusChipClass(val);
+        td.innerHTML = `<span class="chip ${cls}">${escapeHtml(val)}</span>`;
       } else {
         td.textContent = pick(r, c.key) ?? "";
       }

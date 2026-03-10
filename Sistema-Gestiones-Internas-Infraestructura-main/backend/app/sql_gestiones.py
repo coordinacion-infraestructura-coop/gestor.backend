@@ -277,6 +277,8 @@ SET
   derivado_a_id = @derivado_a_id,
   nro_expediente = @nro_expediente,
   fecha_ingreso = @fecha_ingreso,
+  departamento = @departamento,
+  localidad = @localidad,
   updated_at = @updated_at,
   updated_by = @updated_by
 WHERE id_gestion = @id_gestion
