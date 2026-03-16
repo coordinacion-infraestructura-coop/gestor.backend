@@ -338,3 +338,119 @@ VALUES (
   PARSE_JSON(@metadata_json)
 )
 """
+
+
+GET_LOCALIDAD_INFO = """
+SELECT
+  departamento,
+  localidad,
+  habitantes,
+  electores,
+  intendente_jefe_comunal,
+  partido_politico,
+  updated_at,
+  updated_by
+FROM `{localidades_info}`
+WHERE UPPER(TRIM(departamento)) = UPPER(TRIM(@departamento))
+  AND UPPER(TRIM(localidad)) = UPPER(TRIM(@localidad))
+LIMIT 1
+"""
+
+
+UPSERT_LOCALIDAD_INFO = """
+MERGE `{localidades_info}` AS target
+USING (
+  SELECT
+    @departamento AS departamento,
+    @localidad AS localidad,
+    @habitantes AS habitantes,
+    @electores AS electores,
+    @intendente_jefe_comunal AS intendente_jefe_comunal,
+    @partido_politico AS partido_politico,
+    @updated_at AS updated_at,
+    @updated_by AS updated_by
+) AS source
+ON UPPER(TRIM(target.departamento)) = UPPER(TRIM(source.departamento))
+AND UPPER(TRIM(target.localidad)) = UPPER(TRIM(source.localidad))
+WHEN MATCHED THEN
+  UPDATE SET
+    habitantes = source.habitantes,
+    electores = source.electores,
+    intendente_jefe_comunal = source.intendente_jefe_comunal,
+    partido_politico = source.partido_politico,
+    updated_at = source.updated_at,
+    updated_by = source.updated_by
+WHEN NOT MATCHED THEN
+  INSERT (
+    departamento,
+    localidad,
+    habitantes,
+    electores,
+    intendente_jefe_comunal,
+    partido_politico,
+    updated_at,
+    updated_by
+  )
+  VALUES (
+    source.departamento,
+    source.localidad,
+    source.habitantes,
+    source.electores,
+    source.intendente_jefe_comunal,
+    source.partido_politico,
+    source.updated_at,
+    source.updated_by
+  )
+"""
+
+
+LIST_GESTIONES_RESUMEN_TERRITORIAL = """
+SELECT
+  id_gestion,
+  estado,
+  urgencia,
+  ministerio_agencia_id,
+  categoria_general_id,
+  tipo_gestion,
+  canal_origen,
+  detalle,
+  subtipo_detalle,
+  observaciones,
+  nro_expediente,
+  fecha_ingreso,
+  fecha_estado,
+  costo_estimado,
+  costo_moneda,
+  direccion,
+  departamento,
+  localidad
+FROM `{gestiones}`
+WHERE is_deleted = FALSE
+  AND UPPER(TRIM(departamento)) = UPPER(TRIM(@departamento))
+  AND UPPER(TRIM(localidad)) = UPPER(TRIM(@localidad))
+"""
+
+
+LIST_EVENTOS_RESUMEN_TERRITORIAL = """
+SELECT
+  e.id_evento,
+  e.id_gestion,
+  e.fecha_evento,
+  e.usuario,
+  e.rol_usuario,
+  e.tipo_evento,
+  e.estado_anterior,
+  e.estado_nuevo,
+  e.campo_modificado,
+  e.valor_anterior,
+  e.valor_nuevo,
+  e.comentario,
+  e.metadata_json
+FROM `{eventos}` e
+JOIN `{gestiones}` g
+  ON e.id_gestion = g.id_gestion
+WHERE g.is_deleted = FALSE
+  AND UPPER(TRIM(g.departamento)) = UPPER(TRIM(@departamento))
+  AND UPPER(TRIM(g.localidad)) = UPPER(TRIM(@localidad))
+ORDER BY e.fecha_evento DESC
+"""
