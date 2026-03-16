@@ -8,10 +8,11 @@ from google.cloud import bigquery
 
 from bq import bq_client, fqtn
 from deps import qparams, require_roles
-from models import GestionCreate, CambioEstado
+from models import GestionCreate, CambioEstado, LocalidadInfoUpsert
 import sql_gestiones as Q
 
 router = APIRouter(prefix="/gestiones", tags=["gestiones"])
+public_router = APIRouter(tags=["localidades-info"])
 
 
 def _run(query: str, cfg: bigquery.QueryJobConfig):
@@ -28,6 +29,7 @@ def _fmt_tables(sql_text: str) -> str:
         gestiones=fqtn("infra_gestion.gestiones"),
         eventos=fqtn("infra_gestion.gestiones_eventos"),
         geo_localidades=fqtn("geo_localidades"),
+        localidades_info=fqtn("infra_gestion.localidades_info"),
     )
 
 
@@ -41,6 +43,57 @@ def _json_safe(obj):
 
 def json_dumps_safe(d: dict) -> str:
     return json.dumps(d, ensure_ascii=False, default=_json_safe)
+
+
+def _localidad_info_or_default(departamento: str, localidad: str):
+    cfg = qparams([
+        ("departamento", "STRING", departamento),
+        ("localidad", "STRING", localidad),
+    ])
+    row = _one(_fmt_tables(Q.GET_LOCALIDAD_INFO), cfg) or {}
+    return {
+        "departamento": row.get("departamento") or departamento,
+        "localidad": row.get("localidad") or localidad,
+        "habitantes": row.get("habitantes"),
+        "electores": row.get("electores"),
+        "intendente_jefe_comunal": row.get("intendente_jefe_comunal"),
+        "partido_politico": row.get("partido_politico"),
+        "updated_at": row.get("updated_at").isoformat() if row.get("updated_at") else None,
+        "updated_by": row.get("updated_by"),
+    }
+
+
+def _estado_normalizado(value):
+    return str(value or "").strip().upper()
+
+
+def _urgencia_normalizada(value):
+    return str(value or "").strip().lower()
+
+
+def _gestion_sort_key(item):
+    gestion = item.get("gestion") or {}
+    urgencia = _urgencia_normalizada(gestion.get("urgencia"))
+    estado = _estado_normalizado(gestion.get("estado"))
+    prioridad = 3
+    if urgencia == "alta":
+        prioridad = 0
+    elif estado not in {"FINALIZADA", "ARCHIVADO"}:
+        prioridad = 1
+    elif estado == "FINALIZADA":
+        prioridad = 2
+
+    fecha_ref = gestion.get("fecha_ingreso") or gestion.get("fecha_estado")
+    if isinstance(fecha_ref, datetime):
+        ts = fecha_ref.timestamp()
+    elif isinstance(fecha_ref, date):
+        ts = datetime.combine(fecha_ref, datetime.min.time()).timestamp()
+    else:
+        try:
+            ts = datetime.fromisoformat(str(fecha_ref)).timestamp()
+        except Exception:
+            ts = 0
+    return (prioridad, -ts)
 
 
 @router.get("/")
@@ -94,6 +147,61 @@ def list_gestiones(
     return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 
+@router.get("/resumen-territorial")
+def get_resumen_territorial(
+    departamento: str = Query(..., min_length=1),
+    localidad: str = Query(..., min_length=1),
+    user=Depends(require_roles("Admin", "Supervisor", "Operador", "Consulta")),
+):
+    localidad_info = _localidad_info_or_default(departamento, localidad)
+
+    cfg = qparams([
+        ("departamento", "STRING", departamento),
+        ("localidad", "STRING", localidad),
+    ])
+    gestiones = [dict(r) for r in _run(_fmt_tables(Q.LIST_GESTIONES_RESUMEN_TERRITORIAL), cfg)]
+    eventos = [dict(r) for r in _run(_fmt_tables(Q.LIST_EVENTOS_RESUMEN_TERRITORIAL), cfg)]
+
+    eventos_por_gestion = {}
+    for evento in eventos:
+        if evento.get("metadata_json") is not None and not isinstance(evento.get("metadata_json"), str):
+            evento["metadata_json"] = json_dumps_safe(evento.get("metadata_json"))
+        eventos_por_gestion.setdefault(evento.get("id_gestion"), []).append(evento)
+
+    items = []
+    abiertas = 0
+    finalizadas = 0
+    urgentes = 0
+
+    for gestion in gestiones:
+        estado = _estado_normalizado(gestion.get("estado"))
+        urgencia = _urgencia_normalizada(gestion.get("urgencia"))
+        if estado not in {"FINALIZADA", "ARCHIVADO"}:
+            abiertas += 1
+        if estado == "FINALIZADA":
+            finalizadas += 1
+        if urgencia == "alta":
+            urgentes += 1
+
+        items.append({
+            "gestion": gestion,
+            "eventos": eventos_por_gestion.get(gestion.get("id_gestion"), []),
+        })
+
+    items.sort(key=_gestion_sort_key)
+
+    return {
+        "localidad_info": localidad_info,
+        "metricas": {
+            "total_gestiones": len(gestiones),
+            "abiertas": abiertas,
+            "finalizadas": finalizadas,
+            "urgentes": urgentes,
+        },
+        "gestiones": items,
+    }
+
+
 @router.get("/{id_gestion}")
 def get_gestion(
     id_gestion: str,
@@ -113,6 +221,47 @@ def list_eventos(
 ):
     cfg = qparams([("id_gestion", "STRING", id_gestion)])
     return [dict(r) for r in _run(_fmt_tables(Q.LIST_EVENTOS), cfg)]
+
+
+@public_router.get("/localidades-info")
+def get_localidad_info(
+    departamento: str = Query(..., min_length=1),
+    localidad: str = Query(..., min_length=1),
+    user=Depends(require_roles("Admin", "Supervisor", "Operador", "Consulta")),
+):
+    return _localidad_info_or_default(departamento, localidad)
+
+
+@public_router.put("/localidades-info")
+def put_localidad_info(
+    payload: LocalidadInfoUpsert,
+    user=Depends(require_roles("Admin", "Supervisor", "Operador")),
+):
+    cfg_geo = qparams([
+        ("departamento", "STRING", payload.departamento),
+        ("localidad", "STRING", payload.localidad),
+    ])
+    geo = _one(_fmt_tables(Q.GET_GEO), cfg_geo)
+    if not geo:
+        raise HTTPException(
+            status_code=400,
+            detail="Departamento/Localidad invÃ¡lidos (no existen en geo_localidades)"
+        )
+
+    actor = user.get("email") or user.get("usuario") or ""
+    now_dt = datetime.utcnow()
+    cfg = qparams([
+        ("departamento", "STRING", payload.departamento),
+        ("localidad", "STRING", payload.localidad),
+        ("habitantes", "INT64", payload.habitantes),
+        ("electores", "INT64", payload.electores),
+        ("intendente_jefe_comunal", "STRING", payload.intendente_jefe_comunal),
+        ("partido_politico", "STRING", payload.partido_politico),
+        ("updated_at", "TIMESTAMP", now_dt),
+        ("updated_by", "STRING", actor),
+    ])
+    _run(_fmt_tables(Q.UPSERT_LOCALIDAD_INFO), cfg)
+    return _localidad_info_or_default(payload.departamento, payload.localidad)
 
 
 @router.post("", status_code=201)
