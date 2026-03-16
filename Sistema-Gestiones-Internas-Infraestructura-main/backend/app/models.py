@@ -67,3 +67,21 @@ class CambioEstado(BaseModel):
     # Campos extra que tu UI venía mandando
     derivado_a: Optional[str] = None
     acciones_implementadas: Optional[str] = None
+
+
+class LocalidadInfoBase(BaseModel):
+    departamento: str = Field(min_length=1)
+    localidad: str = Field(min_length=1)
+    habitantes: Optional[int] = None
+    electores: Optional[int] = None
+    intendente_jefe_comunal: Optional[str] = None
+    partido_politico: Optional[str] = None
+
+
+class LocalidadInfoUpsert(LocalidadInfoBase):
+    pass
+
+
+class LocalidadInfoResponse(LocalidadInfoBase):
+    updated_at: Optional[str] = None
+    updated_by: Optional[str] = None

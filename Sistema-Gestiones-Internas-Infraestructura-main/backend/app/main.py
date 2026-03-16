@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routers import me, gestiones, catalogos, usuarios
 
-app = FastAPI(title="Infra Gestión API - chipi chipi")
+app = FastAPI(title="Infra Gestión API - prueba resumen territorial")
 
 app.add_middleware(
     CORSMiddleware,
@@ -15,4 +15,5 @@ app.add_middleware(
 app.include_router(me.router)
 app.include_router(catalogos.router)
 app.include_router(gestiones.router)
+app.include_router(gestiones.public_router)
 app.include_router(usuarios.router)
