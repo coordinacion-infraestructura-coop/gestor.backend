@@ -30,6 +30,7 @@ def _fmt_tables(sql_text: str) -> str:
         eventos=fqtn("infra_gestion.gestiones_eventos"),
         geo_localidades=fqtn("geo_localidades"),
         localidades_info=fqtn("infra_gestion.localidades_info"),
+        departamentos_info=fqtn("infra_gestion.departamentos_info"),
     )
 
 
@@ -58,6 +59,26 @@ def _localidad_info_or_default(departamento: str, localidad: str):
         "electores": row.get("electores"),
         "intendente_jefe_comunal": row.get("intendente_jefe_comunal"),
         "partido_politico": row.get("partido_politico"),
+        "updated_at": row.get("updated_at").isoformat() if row.get("updated_at") else None,
+        "updated_by": row.get("updated_by"),
+    }
+
+
+def _departamento_info_or_default(departamento: str):
+    cfg = qparams([
+        ("departamento", "STRING", departamento),
+    ])
+    row = _one(_fmt_tables(Q.GET_DEPARTAMENTO_INFO), cfg) or {}
+    return {
+        "departamento": row.get("departamento") or departamento,
+        "habitantes": row.get("habitantes"),
+        "electores": row.get("electores"),
+        "legislador_departamental": row.get("legislador_departamental"),
+        "partido_politico": row.get("partido_politico"),
+        "legislador_sabana1": row.get("legislador_sabana1"),
+        "partido_politico_sabana1": row.get("partido_politico_sabana1"),
+        "legislador_sabana2": row.get("legislador_sabana2"),
+        "partido_politico_sabana2": row.get("partido_politico_sabana2"),
         "updated_at": row.get("updated_at").isoformat() if row.get("updated_at") else None,
         "updated_by": row.get("updated_by"),
     }
@@ -150,17 +171,25 @@ def list_gestiones(
 @router.get("/resumen-territorial")
 def get_resumen_territorial(
     departamento: str = Query(..., min_length=1),
-    localidad: str = Query(..., min_length=1),
+    localidad: str | None = Query(None),
     user=Depends(require_roles("Admin", "Supervisor", "Operador", "Consulta")),
 ):
-    localidad_info = _localidad_info_or_default(departamento, localidad)
+    localidad = (localidad or "").strip()
+    solo_departamento = not localidad
 
-    cfg = qparams([
-        ("departamento", "STRING", departamento),
-        ("localidad", "STRING", localidad),
-    ])
-    gestiones = [dict(r) for r in _run(_fmt_tables(Q.LIST_GESTIONES_RESUMEN_TERRITORIAL), cfg)]
-    eventos = [dict(r) for r in _run(_fmt_tables(Q.LIST_EVENTOS_RESUMEN_TERRITORIAL), cfg)]
+    cfg_params = [("departamento", "STRING", departamento)]
+    if not solo_departamento:
+        cfg_params.append(("localidad", "STRING", localidad))
+    cfg = qparams(cfg_params)
+
+    if solo_departamento:
+        territorio_info = _departamento_info_or_default(departamento)
+        gestiones = [dict(r) for r in _run(_fmt_tables(Q.LIST_GESTIONES_RESUMEN_DEPARTAMENTO), cfg)]
+        eventos = [dict(r) for r in _run(_fmt_tables(Q.LIST_EVENTOS_RESUMEN_DEPARTAMENTO), cfg)]
+    else:
+        territorio_info = _localidad_info_or_default(departamento, localidad)
+        gestiones = [dict(r) for r in _run(_fmt_tables(Q.LIST_GESTIONES_RESUMEN_TERRITORIAL), cfg)]
+        eventos = [dict(r) for r in _run(_fmt_tables(Q.LIST_EVENTOS_RESUMEN_TERRITORIAL), cfg)]
 
     eventos_por_gestion = {}
     for evento in eventos:
@@ -188,10 +217,19 @@ def get_resumen_territorial(
             "eventos": eventos_por_gestion.get(gestion.get("id_gestion"), []),
         })
 
-    items.sort(key=_gestion_sort_key)
+    if solo_departamento:
+        items.sort(key=lambda item: (
+            str((item.get("gestion") or {}).get("localidad") or "").strip().upper(),
+            *_gestion_sort_key(item),
+        ))
+    else:
+        items.sort(key=_gestion_sort_key)
 
     return {
-        "localidad_info": localidad_info,
+        "scope": "departamento" if solo_departamento else "localidad",
+        "territorio_info": territorio_info,
+        "localidad_info": territorio_info if not solo_departamento else None,
+        "departamento_info": territorio_info if solo_departamento else None,
         "metricas": {
             "total_gestiones": len(gestiones),
             "abiertas": abiertas,
