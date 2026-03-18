@@ -357,6 +357,25 @@ LIMIT 1
 """
 
 
+GET_DEPARTAMENTO_INFO = """
+SELECT
+  departamento,
+  habitantes,
+  electores,
+  legislador_departamental,
+  partido_politico,
+  legislador_sabana1,
+  partido_politico_sabana1,
+  legislador_sabana2,
+  partido_politico_sabana2,
+  updated_at,
+  updated_by
+FROM `{departamentos_info}`
+WHERE UPPER(TRIM(departamento)) = UPPER(TRIM(@departamento))
+LIMIT 1
+"""
+
+
 UPSERT_LOCALIDAD_INFO = """
 MERGE `{localidades_info}` AS target
 USING (
@@ -431,6 +450,32 @@ WHERE is_deleted = FALSE
 """
 
 
+LIST_GESTIONES_RESUMEN_DEPARTAMENTO = """
+SELECT
+  id_gestion,
+  estado,
+  urgencia,
+  ministerio_agencia_id,
+  categoria_general_id,
+  tipo_gestion,
+  canal_origen,
+  detalle,
+  subtipo_detalle,
+  observaciones,
+  nro_expediente,
+  fecha_ingreso,
+  fecha_estado,
+  costo_estimado,
+  costo_moneda,
+  direccion,
+  departamento,
+  localidad
+FROM `{gestiones}`
+WHERE is_deleted = FALSE
+  AND UPPER(TRIM(departamento)) = UPPER(TRIM(@departamento))
+"""
+
+
 LIST_EVENTOS_RESUMEN_TERRITORIAL = """
 SELECT
   e.id_evento,
@@ -452,5 +497,29 @@ JOIN `{gestiones}` g
 WHERE g.is_deleted = FALSE
   AND UPPER(TRIM(g.departamento)) = UPPER(TRIM(@departamento))
   AND UPPER(TRIM(g.localidad)) = UPPER(TRIM(@localidad))
+ORDER BY e.fecha_evento DESC
+"""
+
+
+LIST_EVENTOS_RESUMEN_DEPARTAMENTO = """
+SELECT
+  e.id_evento,
+  e.id_gestion,
+  e.fecha_evento,
+  e.usuario,
+  e.rol_usuario,
+  e.tipo_evento,
+  e.estado_anterior,
+  e.estado_nuevo,
+  e.campo_modificado,
+  e.valor_anterior,
+  e.valor_nuevo,
+  e.comentario,
+  e.metadata_json
+FROM `{eventos}` e
+JOIN `{gestiones}` g
+  ON e.id_gestion = g.id_gestion
+WHERE g.is_deleted = FALSE
+  AND UPPER(TRIM(g.departamento)) = UPPER(TRIM(@departamento))
 ORDER BY e.fecha_evento DESC
 """
