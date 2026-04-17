@@ -348,6 +348,8 @@ SELECT
   electores,
   intendente_jefe_comunal,
   partido_politico,
+  tipo_localidad,
+  color_semaforo,
   updated_at,
   updated_by
 FROM `{localidades_info}`
