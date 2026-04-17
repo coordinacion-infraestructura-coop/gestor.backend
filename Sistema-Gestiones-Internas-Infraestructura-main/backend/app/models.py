@@ -76,6 +76,8 @@ class LocalidadInfoBase(BaseModel):
     electores: Optional[int] = None
     intendente_jefe_comunal: Optional[str] = None
     partido_politico: Optional[str] = None
+    tipo_localidad: Optional[str] = None
+    color_semaforo: Optional[str] = None
 
 
 class LocalidadInfoUpsert(LocalidadInfoBase):

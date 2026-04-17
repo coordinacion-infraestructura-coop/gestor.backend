@@ -59,6 +59,8 @@ def _localidad_info_or_default(departamento: str, localidad: str):
         "electores": row.get("electores"),
         "intendente_jefe_comunal": row.get("intendente_jefe_comunal"),
         "partido_politico": row.get("partido_politico"),
+        "tipo_localidad": row.get("tipo_localidad"),
+        "color_semaforo": row.get("color_semaforo"),
         "updated_at": row.get("updated_at").isoformat() if row.get("updated_at") else None,
         "updated_by": row.get("updated_by"),
     }
