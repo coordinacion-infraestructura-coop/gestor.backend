@@ -38,3 +38,19 @@ def require_roles(*roles: str) -> Callable:
             raise HTTPException(status_code=403, detail="Sin permiso")
         return user
     return _inner
+
+
+def require_modulo(modulo: str) -> Callable:
+    """
+    Dependency factory para exigir acceso a un módulo específico.
+    Admin bypasea el check automáticamente.
+    Uso:
+      user = Depends(require_modulo("cordon_cuneta"))
+    """
+    def _inner(user: Dict[str, Any] = Depends(_require_user)) -> Dict[str, Any]:
+        if user.get("rol") == "Admin":
+            return user
+        if modulo not in (user.get("modulos") or []):
+            raise HTTPException(status_code=403, detail=f"Sin acceso al módulo {modulo}")
+        return user
+    return _inner

@@ -39,10 +39,30 @@ def _get_bq_user(email: str) -> Optional[Dict[str, Any]]:
     return dict(rows[0]) if rows else None
 
 
+def _get_user_modulos(email: str) -> list:
+    """
+    Devuelve los módulos activos asignados al usuario.
+    Retorna [] silenciosamente si la tabla no existe o hay error (compatibilidad
+    con entornos donde el DDL de fase1 aún no fue ejecutado).
+    """
+    try:
+        table = fqtn("infra_gestion.usuario_modulos")
+        q = f"""
+        SELECT modulo
+        FROM `{table}`
+        WHERE LOWER(email) = LOWER(@email)
+          AND activo = TRUE
+        """
+        job = bq_client().query(q, job_config=qparams([("email", "STRING", email)]))
+        return [row["modulo"] for row in job.result()]
+    except Exception:
+        return []
+
+
 def require_user(authorization: str = Header(default="")) -> Dict[str, Any]:
     """
     Valida token de Google (id_token) y luego verifica permisos en usuarios_roles.
-    Devuelve un dict con {email, nombre, rol}.
+    Devuelve un dict con {email, nombre, rol, modulos}.
     """
     if not isinstance(authorization, str) or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing Bearer token")
@@ -71,8 +91,10 @@ def require_user(authorization: str = Header(default="")) -> Dict[str, Any]:
     if not bool(user.get("activo")):
         raise HTTPException(status_code=403, detail="Not authorized (inactive user)")
 
+    modulos = _get_user_modulos(email)
     return {
         "email": user["email"],
         "nombre": user.get("nombre"),
         "rol": user["rol"],
+        "modulos": modulos,
     }

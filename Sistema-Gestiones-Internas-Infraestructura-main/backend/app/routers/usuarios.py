@@ -5,7 +5,7 @@ from typing import Optional
 from uuid import uuid4
 import json
 
-from bq import bq_client
+from bq import bq_client, fqtn
 from deps import qparams, require_roles
 from models import Rol
 
@@ -23,6 +23,11 @@ class UsuarioUpdate(BaseModel):
     nombre: Optional[str] = None
     rol: Optional[Rol] = None
     activo: Optional[bool] = None
+
+
+class UsuarioModuloCreate(BaseModel):
+    modulo: str
+    rol_modulo: Rol
 
 
 def _insert_usuario_evento(actor_email: str, tipo_evento: str, usuario_email: str, payload: dict):
@@ -175,4 +180,109 @@ def disable_usuario(email: str, user=Depends(require_roles("Admin"))):
         payload={"activo": False},
     )
 
+    return {"ok": True}
+
+
+# ── Módulos por usuario ───────────────────────────────────────────────────────
+
+@router.get("/{email}/modulos")
+def get_usuario_modulos(email: str, user=Depends(require_roles("Admin"))):
+    """Lista los módulos habilitados para un usuario."""
+    q = f"""
+    SELECT
+      um.modulo,
+      um.rol_modulo,
+      um.activo,
+      COALESCE(cm.nombre, um.modulo) AS modulo_nombre,
+      cm.orden
+    FROM `{fqtn("infra_gestion.usuario_modulos")}` um
+    LEFT JOIN `{fqtn("infra_gestion.cat_modulos")}` cm
+      ON cm.id = um.modulo
+    WHERE LOWER(um.email) = LOWER(@email)
+    ORDER BY COALESCE(cm.orden, 999), um.modulo
+    """
+    return [dict(r) for r in bq_client().query(
+        q, job_config=qparams([("email", "STRING", email.lower())])
+    ).result()]
+
+
+@router.post("/{email}/modulos", status_code=201)
+def add_usuario_modulo(
+    email: str,
+    payload: UsuarioModuloCreate,
+    user=Depends(require_roles("Admin")),
+):
+    """Habilita un módulo para un usuario (upsert por email+modulo)."""
+    # Verifica si ya existe el registro
+    q_check = f"""
+    SELECT COUNT(1) AS c
+    FROM `{fqtn("infra_gestion.usuario_modulos")}`
+    WHERE LOWER(email) = LOWER(@email) AND modulo = @modulo
+    """
+    c = list(bq_client().query(
+        q_check,
+        job_config=qparams([
+            ("email", "STRING", email.lower()),
+            ("modulo", "STRING", payload.modulo),
+        ])
+    ).result())[0]["c"]
+
+    if c > 0:
+        q = f"""
+        UPDATE `{fqtn("infra_gestion.usuario_modulos")}`
+        SET rol_modulo = @rol_modulo, activo = TRUE, created_by = @actor
+        WHERE LOWER(email) = LOWER(@email) AND modulo = @modulo
+        """
+    else:
+        q = f"""
+        INSERT INTO `{fqtn("infra_gestion.usuario_modulos")}`
+        (email, modulo, rol_modulo, activo, created_at, created_by)
+        VALUES (@email, @modulo, @rol_modulo, TRUE, CURRENT_TIMESTAMP(), @actor)
+        """
+
+    bq_client().query(
+        q,
+        job_config=qparams([
+            ("email", "STRING", email.lower()),
+            ("modulo", "STRING", payload.modulo),
+            ("rol_modulo", "STRING", payload.rol_modulo),
+            ("actor", "STRING", user["email"]),
+        ])
+    ).result()
+
+    _insert_usuario_evento(
+        actor_email=user["email"],
+        tipo_evento="MODULO_HABILITADO",
+        usuario_email=email,
+        payload={"modulo": payload.modulo, "rol_modulo": payload.rol_modulo},
+    )
+    return {"ok": True}
+
+
+@router.delete("/{email}/modulos/{modulo}")
+def remove_usuario_modulo(
+    email: str,
+    modulo: str,
+    user=Depends(require_roles("Admin")),
+):
+    """Deshabilita un módulo para un usuario (activo = FALSE)."""
+    q = f"""
+    UPDATE `{fqtn("infra_gestion.usuario_modulos")}`
+    SET activo = FALSE
+    WHERE LOWER(email) = LOWER(@email) AND modulo = @modulo
+    """
+    bq_client().query(
+        q,
+        job_config=qparams([
+            ("email", "STRING", email.lower()),
+            ("modulo", "STRING", modulo),
+        ])
+    ).result()
+
+    _insert_usuario_evento(
+        actor_email=user["email"],
+        tipo_evento="MODULO_DESHABILITADO",
+        usuario_email=email,
+        payload={"modulo": modulo},
+    )
     return {"ok": True}

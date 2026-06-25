@@ -100,6 +100,17 @@ def localidades(
     return [r["localidad"] for r in job.result()]
 
 
+@router.get("/modulos")
+def modulos(user=Depends(current_user)):
+    q = f"""
+    SELECT id, nombre, descripcion, activo, orden
+    FROM `{fqtn("infra_gestion.cat_modulos")}`
+    WHERE activo = TRUE
+    ORDER BY orden, nombre
+    """
+    return [dict(r) for r in bq_client().query(q).result()]
+
+
 @router.get("/geo")
 def geo_lookup(
     departamento: str = Query(..., min_length=1),
