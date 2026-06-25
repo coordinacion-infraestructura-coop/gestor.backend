@@ -8,11 +8,11 @@ services:
       - "8081:8080"
     environment:
       - PORT=8080
-      # Si tu app usa variables para BigQuery, agregalas acá (ejemplos):
-      # - GCP_PROJECT_ID=tu-proyecto
-      # - BQ_DATASET=tu_dataset
-      # - BQ_TABLE=tu_tabla
+      - GCP_PROJECT=essential-haiku-482815-u4
+      - BQ_DATASET=infra_gestion
+      - GOOGLE_APPLICATION_CREDENTIALS=/creds/service_account.json
     volumes:
       - ./backend/app:/app
+      - "C:\\Users\\pbonafe\\OneDrive - Getronics\\Documents\\programacion\\agente_gestionInterna_InfraestructuraV1\\backend\\creds:/creds:ro"
     command: >
       bash -lc "exec uvicorn main:app --host 0.0.0.0 --port 8080 --reload"
