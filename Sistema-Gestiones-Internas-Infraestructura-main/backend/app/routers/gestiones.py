@@ -285,7 +285,7 @@ def put_localidad_info(
     if not geo:
         raise HTTPException(
             status_code=400,
-            detail="Departamento/Localidad invÃ¡lidos (no existen en geo_localidades)"
+            detail="Departamento/Localidad inválidos (no existen en geo_localidades)"
         )
 
     actor = user.get("email") or user.get("usuario") or ""

@@ -1,14 +1,13 @@
 # app/routers/usuarios.py
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
-from typing import Optional, Literal
+from typing import Optional
 from uuid import uuid4
 import json
 
 from bq import bq_client
 from deps import qparams, require_roles
-
-Rol = Literal["Admin", "Operador", "Supervisor", "Consulta"]
+from models import Rol
 
 router = APIRouter(prefix="/usuarios", tags=["usuarios"])
 

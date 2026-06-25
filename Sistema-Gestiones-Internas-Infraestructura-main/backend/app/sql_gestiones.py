@@ -87,7 +87,7 @@ WHERE is_deleted = FALSE
       CONTAINS_SUBSTR(LOWER(COALESCE(canal_origen, '')), LOWER(@q))
     )
   )
-ORDER BY fecha_ingreso DESC, fecha_estado DESC
+ORDER BY fecha_ingreso DESC, fecha_estado DESC, id_gestion
 LIMIT @limit OFFSET @offset
 """
 
