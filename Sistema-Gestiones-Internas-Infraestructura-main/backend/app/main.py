@@ -16,6 +16,7 @@ app.add_middleware(
         "http://127.0.0.1:8081",
         "https://labotech-analytics.github.io",
         "https://labotech-analytics.github.io/SistemaGestiones_infraestructura_front/",
+        "https://coordinacion-infraestructura-coop.github.io/gestor/"
     ],
     allow_credentials=True,
     allow_methods=["*"],
