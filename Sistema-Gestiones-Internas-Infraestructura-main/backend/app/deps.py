@@ -14,13 +14,16 @@ def qparams(params: Iterable[Tuple[str, str, Any]]) -> QueryJobConfig:
     )
 
 
-def _require_user(authorization: str = Header(default="")) -> Dict[str, Any]:
+def _require_user(
+    authorization: str = Header(default=""),
+    x_forwarded_authorization: str = Header(default="", alias="X-Forwarded-Authorization"),
+) -> Dict[str, Any]:
     """
     Wrapper para evitar import circular.
-    Importa require_user en runtime y le pasa el header real 'Authorization'.
+    Extrae ambos headers para que auth.py pueda detectar llamadas vía API Gateway.
     """
     from auth import require_user  # <- import perezoso (evita circular import)
-    return require_user(authorization)
+    return require_user(authorization, x_forwarded_authorization)
 
 
 def current_user(user: Dict[str, Any] = Depends(_require_user)) -> Dict[str, Any]:

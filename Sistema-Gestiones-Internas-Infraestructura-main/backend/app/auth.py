@@ -59,24 +59,40 @@ def _get_user_modulos(email: str) -> list:
         return []
 
 
-def require_user(authorization: str = Header(default="")) -> Dict[str, Any]:
+def require_user(
+    authorization: str = Header(default=""),
+    x_forwarded_authorization: str = Header(default="", alias="X-Forwarded-Authorization"),
+) -> Dict[str, Any]:
     """
-    Valida token de Google (id_token) y luego verifica permisos en usuarios_roles.
-    Devuelve un dict con {email, nombre, rol, modulos}.
+    Dos rutas de autenticación:
+    - Llamada vía API Gateway: X-Forwarded-Authorization con Firebase JWT (aud=gestorcooperativo)
+    - Llamada directa legacy (Vanilla JS): Authorization con Google OAuth2 token
     """
-    if not isinstance(authorization, str) or not authorization.startswith("Bearer "):
+    # El API Gateway reemplaza Authorization con su propio SA token;
+    # el token del usuario queda en X-Forwarded-Authorization.
+    gateway_mode = x_forwarded_authorization.startswith("Bearer ")
+    raw = x_forwarded_authorization if gateway_mode else authorization
+
+    if not isinstance(raw, str) or not raw.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing Bearer token")
 
-    token = authorization.split(" ", 1)[1].strip()
+    token = raw.split(" ", 1)[1].strip()
     if not token:
         raise HTTPException(status_code=401, detail="Empty token")
 
     try:
-        claims = id_token.verify_oauth2_token(
-            token,
-            requests.Request(),
-            settings.google_client_id,
-        )
+        if gateway_mode:
+            claims = id_token.verify_firebase_token(
+                token,
+                requests.Request(),
+                audience="gestorcooperativo",
+            )
+        else:
+            claims = id_token.verify_oauth2_token(
+                token,
+                requests.Request(),
+                settings.google_client_id,
+            )
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid token")
 
