@@ -119,6 +119,7 @@ def _gestion_sort_key(item):
     return (prioridad, -ts)
 
 
+@router.get("")
 @router.get("/")
 def list_gestiones(
     estado: str | None = None,
