@@ -102,7 +102,11 @@ def require_user(
 
     user = _get_bq_user(email)
     if not user:
-        raise HTTPException(status_code=403, detail="Not authorized (user not found)")
+        # DEBUG TEMPORAL — remover luego de diagnosticar
+        raise HTTPException(
+            status_code=403,
+            detail=f"[DEBUG] user not found | email={email!r} | gateway_mode={gateway_mode}",
+        )
 
     if not bool(user.get("activo")):
         raise HTTPException(status_code=403, detail="Not authorized (inactive user)")
