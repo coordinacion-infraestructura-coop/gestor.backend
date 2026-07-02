@@ -37,4 +37,6 @@ app.include_router(informe_cooperativas.router)
 # El Vanilla JS legacy sigue usando las rutas sin prefijo de arriba.
 app.include_router(me.router, prefix="/api/v1/privada")
 app.include_router(gestiones.router, prefix="/api/v1/privada")
+app.include_router(gestiones.public_router, prefix="/api/v1/privada")
 app.include_router(catalogos.router, prefix="/api/v1/privada")
+app.include_router(usuarios.router, prefix="/api/v1/privada")
